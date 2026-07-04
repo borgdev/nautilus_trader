@@ -47,6 +47,8 @@ pub mod entry;
 pub mod error;
 pub mod hash;
 pub mod headers;
+#[cfg(feature = "kafka")]
+pub mod kafka;
 pub mod kernel;
 pub mod manifest;
 pub mod markers;

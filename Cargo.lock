@@ -6094,12 +6094,15 @@ dependencies = [
  "nautilus-persistence",
  "nautilus-system",
  "proptest",
+ "rdkafka",
  "redb",
  "rmp-serde",
  "rstest",
  "serde",
+ "serde_json",
  "tempfile",
  "thiserror 2.0.18",
+ "tokio",
  "ustr",
 ]
 

@@ -25,6 +25,7 @@ default = []
 defi = ["nautilus-common/defi", "nautilus-model/defi", "nautilus-system/defi"]
 live = ["nautilus-common/live"]
 persistence = ["dep:nautilus-persistence"]
+kafka = ["dep:rdkafka", "dep:serde_json", "dep:tokio", "live"]
 
 [package.metadata.docs.rs]
 all-features = true
@@ -38,6 +39,9 @@ nautilus-model = { workspace = true }
 nautilus-system = { workspace = true }
 
 nautilus-persistence = { workspace = true, optional = true }
+rdkafka = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true }
 
 ahash = { workspace = true }
 anyhow = { workspace = true }
