@@ -297,11 +297,18 @@ class NautilusKernel:
                 instance_id=nautilus_pyo3.UUID4.from_str(self._instance_id.value),
                 config_json=pyo3_config_json(config.message_bus),
             )
+        elif config.message_bus.database.type == "kafka":
+            self._msgbus_db = nautilus_pyo3.KafkaMessageBusBacking(
+                trader_id=nautilus_pyo3.TraderId(self._trader_id.value),
+                instance_id=nautilus_pyo3.UUID4.from_str(self._instance_id.value),
+                config_json=pyo3_config_json(config.message_bus),
+            )
         else:
             raise ValueError(
                 f"Unrecognized `config.message_bus.database.type`, was '{config.message_bus.database.type}'. "
-                "The only database type currently supported is 'redis', if you don't want a message bus database backing "
-                "then you can pass `None` for the `message_bus.database` ('in-memory' is no longer valid)",
+                "The only database types currently supported are 'redis' and 'kafka', if you don't want a message "
+                "bus database backing then you can pass `None` for the `message_bus.database` "
+                "('in-memory' is no longer valid)",
             )
 
         ########################################################################

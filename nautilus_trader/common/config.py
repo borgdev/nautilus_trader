@@ -355,7 +355,7 @@ class DatabaseConfig(NautilusConfig, frozen=True):
     Parameters
     ----------
     type : str, {'redis'}, default 'redis'
-        The database type.
+        The database type. When used for `MessageBusConfig.database`, `'kafka'` is also accepted.
     host : str, optional
         The database host address. If `None` then should use the typical default.
     port : int, optional

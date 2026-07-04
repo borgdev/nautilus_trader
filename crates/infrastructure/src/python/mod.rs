@@ -15,6 +15,9 @@
 
 //! Python bindings from [PyO3](https://pyo3.rs).
 
+#[cfg(feature = "kafka")]
+pub mod kafka;
+
 #[cfg(feature = "redis")]
 pub mod redis;
 
@@ -30,9 +33,11 @@ use pyo3::{prelude::*, pymodule};
 /// Returns a `PyErr` if the module initialization fails, e.g., when adding classes to the module.
 #[pymodule]
 pub fn infrastructure(_: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
-    #[cfg(not(any(feature = "redis", feature = "postgres")))]
+    #[cfg(not(any(feature = "redis", feature = "postgres", feature = "kafka")))]
     let _ = m;
 
+    #[cfg(feature = "kafka")]
+    m.add_class::<kafka::msgbus::PyKafkaMessageBusBacking>()?;
     #[cfg(feature = "redis")]
     m.add_class::<crate::redis::cache::RedisCacheConfig>()?;
     #[cfg(feature = "redis")]
@@ -65,6 +70,25 @@ mod tests {
             infrastructure(py, &module).unwrap();
 
             assert!(module.getattr("RedisMessageBusBacking").is_ok());
+        });
+    }
+}
+
+#[cfg(all(test, feature = "kafka"))]
+mod kafka_tests {
+    use rstest::rstest;
+
+    use super::*;
+
+    #[rstest]
+    fn test_infrastructure_module_exports_kafka_message_bus_backing() {
+        Python::initialize();
+        Python::attach(|py| {
+            let module = PyModule::new(py, "infrastructure").unwrap();
+
+            infrastructure(py, &module).unwrap();
+
+            assert!(module.getattr("KafkaMessageBusBacking").is_ok());
         });
     }
 }

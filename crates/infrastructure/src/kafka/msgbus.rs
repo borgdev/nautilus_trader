@@ -328,9 +328,7 @@ impl MessageBusBacking for KafkaMessageBusBacking {
     }
 
     fn take_receiver(&mut self) -> anyhow::Result<tokio::sync::mpsc::Receiver<BusMessage>> {
-        self.stream_rx
-            .take()
-            .ok_or_else(|| anyhow::anyhow!("Stream receiver already taken"))
+        self.get_stream_receiver()
     }
 
     /// Closes the message bus backing.
@@ -364,6 +362,30 @@ impl KafkaMessageBusBacking {
         await_handle(self.pub_handle.take(), MSGBUS_PUBLISH).await;
         await_handle(self.stream_handle.take(), MSGBUS_STREAM).await;
         await_handle(self.heartbeat_handle.take(), MSGBUS_HEARTBEAT).await;
+    }
+
+    /// Retrieves the Kafka stream receiver for this message bus instance.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the stream receiver has already been taken.
+    pub fn get_stream_receiver(
+        &mut self,
+    ) -> anyhow::Result<tokio::sync::mpsc::Receiver<BusMessage>> {
+        self.stream_rx
+            .take()
+            .ok_or_else(|| anyhow::anyhow!("Stream receiver already taken"))
+    }
+
+    /// Streams messages arriving on the stream receiver channel.
+    pub fn stream(
+        mut stream_rx: tokio::sync::mpsc::Receiver<BusMessage>,
+    ) -> impl futures::stream::Stream<Item = BusMessage> + 'static {
+        async_stream::stream! {
+            while let Some(msg) = stream_rx.recv().await {
+                yield msg;
+            }
+        }
     }
 }
 
