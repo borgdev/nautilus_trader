@@ -26,7 +26,7 @@ pub mod builtins;
 pub mod encoder;
 pub mod registry;
 
-pub use adapter::{BusCaptureAdapter, CaptureError};
+pub use adapter::{BusCaptureAdapter, CaptureError, CapturedEntrySink};
 pub use builtins::{
     PAYLOAD_TYPE_ACCOUNT_STATE, PAYLOAD_TYPE_FILL_REPORT, PAYLOAD_TYPE_ORDER_FILLED,
     PAYLOAD_TYPE_ORDER_STATUS_REPORT, PAYLOAD_TYPE_POSITION_STATUS_REPORT,

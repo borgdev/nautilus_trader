@@ -93,6 +93,23 @@ pub struct BusCaptureAdapter {
     halted: AtomicBool,
     submit_counter: Option<Arc<AtomicU64>>,
     recent_identities: Mutex<RecentIdentities>,
+    sink: Option<Arc<dyn CapturedEntrySink>>,
+}
+
+/// Receives a copy of every entry the adapter durably submits to the writer.
+///
+/// This is an external fan-out point, not part of the SPEC capture/replay contract: the
+/// writer's durable submit has already succeeded by the time [`Self::on_captured`] fires, so a
+/// slow or failing sink cannot affect capture durability or the no-drop guarantee. Implementors
+/// still must not block or re-enter the bus — the tap this fires from is the same
+/// single-threaded, cheap-callback context [`crate::BusTap`] documents.
+///
+/// The intended use is an external event stream (e.g. publishing enriched, header-carrying
+/// records to a message broker) that wants the same `Headers` the event store already computed,
+/// without duplicating the [`EncoderRegistry`]'s per-type extraction logic.
+pub trait CapturedEntrySink: Send + Sync {
+    /// Called with the just-submitted entry, after the writer has durably accepted it.
+    fn on_captured(&self, entry: &EntryDraft);
 }
 
 // Insertion-ordered set of recently captured message identities with FIFO eviction.
@@ -149,6 +166,7 @@ impl BusCaptureAdapter {
             halted: AtomicBool::new(false),
             submit_counter: None,
             recent_identities: Mutex::new(RecentIdentities::default()),
+            sink: None,
         }
     }
 
@@ -156,6 +174,16 @@ impl BusCaptureAdapter {
     #[must_use]
     pub fn with_submit_counter(mut self, submit_counter: Arc<AtomicU64>) -> Self {
         self.submit_counter = Some(submit_counter);
+        self
+    }
+
+    /// Registers a [`CapturedEntrySink`] to receive a copy of every durably-submitted entry.
+    ///
+    /// Off by default (`None`) — this is purely additive and changes no existing behavior
+    /// until a caller explicitly wires a sink.
+    #[must_use]
+    pub fn with_sink(mut self, sink: Arc<dyn CapturedEntrySink>) -> Self {
+        self.sink = Some(sink);
         self
     }
 
@@ -251,10 +279,16 @@ impl BusCaptureAdapter {
             index_keys: encoded.index_keys,
         };
 
+        // Only clone when a sink is actually registered (the default, common case pays nothing).
+        let notify = self.sink.as_ref().map(|_| draft.clone());
+
         match self.writer.submit(draft) {
             Ok(()) => {
                 if let Some(submit_counter) = self.submit_counter.as_ref() {
                     submit_counter.fetch_add(1, Ordering::AcqRel);
+                }
+                if let (Some(sink), Some(entry)) = (self.sink.as_ref(), notify) {
+                    sink.on_captured(&entry);
                 }
                 Ok(true)
             }
@@ -534,6 +568,76 @@ mod tests {
 
         assert!(captured.lock().expect("captured").is_empty());
         assert!(!adapter.is_halted());
+    }
+
+    #[derive(Debug, Default)]
+    struct RecordingSink {
+        entries: Mutex<Vec<EntryDraft>>,
+    }
+
+    impl CapturedEntrySink for RecordingSink {
+        fn on_captured(&self, entry: &EntryDraft) {
+            self.entries.lock().expect("sink").push(entry.clone());
+        }
+    }
+
+    #[rstest]
+    fn with_sink_receives_a_copy_of_every_durably_submitted_entry(
+        captured_halt: (HaltCallback, Arc<Mutex<Vec<HaltReason>>>),
+    ) {
+        let (halt, _captured) = captured_halt;
+        let (writer, _backend) = writer_with_open_run("run-sink", Arc::clone(&halt));
+        let sink = Arc::new(RecordingSink::default());
+        let adapter = BusCaptureAdapter::new(Arc::clone(&writer), stub_registry(), halt)
+            .with_sink(Arc::clone(&sink) as Arc<dyn CapturedEntrySink>);
+
+        let cmd = StubCommand {
+            client_order_id: "O-1".to_string(),
+        };
+        let topic = Topic::from("exec.command.SubmitOrder");
+        adapter
+            .capture::<StubCommand>(topic, &cmd, Headers::empty(), UnixNanos::from(100))
+            .expect("capture");
+        drain(&writer, 1);
+
+        let entries = sink.entries.lock().expect("sink");
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].topic.as_ref(), "exec.command.SubmitOrder");
+        assert_eq!(entries[0].payload_type.as_str(), "StubCommand");
+        assert_eq!(entries[0].payload.as_ref(), b"O-1");
+    }
+
+    #[rstest]
+    fn sink_is_not_notified_when_the_encoder_rejects_the_message(
+        captured_halt: (HaltCallback, Arc<Mutex<Vec<HaltReason>>>),
+    ) {
+        let (halt, _captured) = captured_halt;
+        let (writer, _backend) = writer_with_open_run("run-sink-rejected", Arc::clone(&halt));
+        let sink = Arc::new(RecordingSink::default());
+        let adapter = BusCaptureAdapter::new(Arc::clone(&writer), stub_registry(), halt)
+            .with_sink(Arc::clone(&sink) as Arc<dyn CapturedEntrySink>);
+
+        // FailingMessage is registered but its encoder always errors -- should not notify.
+        let result = adapter.capture::<FailingMessage>(
+            Topic::from("data.market.unknown"),
+            &FailingMessage,
+            Headers::empty(),
+            UnixNanos::from(50),
+        );
+        assert!(result.is_err());
+        assert!(sink.entries.lock().expect("sink").is_empty());
+
+        // UnknownMessage has no encoder at all -- should not notify either.
+        let captured_flag = adapter
+            .capture::<UnknownMessage>(
+                Topic::from("data.market.unknown"),
+                &UnknownMessage,
+                Headers::empty(),
+                UnixNanos::from(60),
+            )
+            .expect("capture");
+        assert!(!captured_flag);
+        assert!(sink.entries.lock().expect("sink").is_empty());
     }
 
     #[rstest]

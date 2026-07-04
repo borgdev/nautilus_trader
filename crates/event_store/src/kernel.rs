@@ -57,10 +57,10 @@ use nautilus_system::{
 use ustr::Ustr;
 
 use crate::{
-    BusCaptureAdapter, CacheReplayError, CacheReplayReport, CaptureError, EncoderRegistry,
-    EntryDraft, EventStore, EventStoreError, EventStoreWriter, HaltCallback, HaltReason, Headers,
-    RedbBackend, RunId, RunManifest, RunStatus, ScanDirection, Topic, WriterConfig,
-    compute_snapshot_content_hash, default_registry,
+    BusCaptureAdapter, CacheReplayError, CacheReplayReport, CaptureError, CapturedEntrySink,
+    EncoderRegistry, EntryDraft, EventStore, EventStoreError, EventStoreWriter, HaltCallback,
+    HaltReason, Headers, RedbBackend, RunId, RunManifest, RunStatus, ScanDirection, Topic,
+    WriterConfig, compute_snapshot_content_hash, default_registry,
     markers::{
         DataClass, DataMarkerCapture, DataMarkerExtractorRegistry, MarkerBackend, MarkerManifest,
         MarkerWriter, MarkerWriterConfig, RedbMarkerBackend,
@@ -112,6 +112,7 @@ pub struct EventStoreLifecycleOptions {
     registry_factory: Arc<RegistryFactory>,
     backend_opener: Arc<BackendOpener>,
     marker_registry_factory: Arc<MarkerRegistryFactory>,
+    captured_entry_sink: Option<Arc<dyn CapturedEntrySink>>,
 }
 
 impl Debug for EventStoreLifecycleOptions {
@@ -127,6 +128,7 @@ impl Default for EventStoreLifecycleOptions {
             registry_factory: Arc::new(default_registry),
             backend_opener: Arc::new(default_backend_opener),
             marker_registry_factory: Arc::new(DataMarkerExtractorRegistry::default_registry),
+            captured_entry_sink: None,
         }
     }
 }
@@ -171,6 +173,16 @@ impl EventStoreLifecycleOptions {
         F: Fn(&[DataClass]) -> DataMarkerExtractorRegistry + Send + Sync + 'static,
     {
         self.marker_registry_factory = Arc::new(factory);
+        self
+    }
+
+    /// Registers a [`CapturedEntrySink`] on the [`BusCaptureAdapter`] built for each opened run.
+    ///
+    /// Off by default (`None`) — purely additive, see [`CapturedEntrySink`]'s own doc comment
+    /// for the durability and no-blocking contract a sink must uphold.
+    #[must_use]
+    pub fn with_captured_entry_sink(mut self, sink: Arc<dyn CapturedEntrySink>) -> Self {
+        self.captured_entry_sink = Some(sink);
         self
     }
 
@@ -983,6 +995,9 @@ pub fn open_run_with_options(
 
     if let Some(submit_counter) = submit_counter {
         adapter = adapter.with_submit_counter(submit_counter);
+    }
+    if let Some(sink) = options.captured_entry_sink.clone() {
+        adapter = adapter.with_sink(sink);
     }
     let adapter = Arc::new(adapter);
 

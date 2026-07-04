@@ -64,12 +64,13 @@ pub use backend::{
     AppendEntry, EventStore, IndexKey, IndexKind, MemoryBackend, RedbBackend, ScanDirection,
 };
 pub use capture::{
-    BusCaptureAdapter, CaptureError, Encode, EncodeError, EncodedPayload, EncoderRegistry,
-    PAYLOAD_TYPE_ACCOUNT_STATE, PAYLOAD_TYPE_FILL_REPORT, PAYLOAD_TYPE_ORDER_FILLED,
-    PAYLOAD_TYPE_ORDER_STATUS_REPORT, PAYLOAD_TYPE_POSITION_STATUS_REPORT,
-    PAYLOAD_TYPE_SUBMIT_ORDER, TypedEncoder, default_registry, encode_account_state,
-    encode_fill_report, encode_order_filled, encode_order_status_report,
-    encode_position_status_report, encode_submit_order, register_default,
+    BusCaptureAdapter, CaptureError, CapturedEntrySink, Encode, EncodeError, EncodedPayload,
+    EncoderRegistry, PAYLOAD_TYPE_ACCOUNT_STATE, PAYLOAD_TYPE_FILL_REPORT,
+    PAYLOAD_TYPE_ORDER_FILLED, PAYLOAD_TYPE_ORDER_STATUS_REPORT,
+    PAYLOAD_TYPE_POSITION_STATUS_REPORT, PAYLOAD_TYPE_SUBMIT_ORDER, TypedEncoder,
+    default_registry, encode_account_state, encode_fill_report, encode_order_filled,
+    encode_order_status_report, encode_position_status_report, encode_submit_order,
+    register_default,
 };
 pub use entry::{EventStoreEntry, PayloadType, Topic};
 pub use error::EventStoreError;
