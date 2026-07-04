@@ -39,10 +39,11 @@ python = [
 ]
 redis = ["dep:redis"]
 postgres = ["dep:sqlx"]
+kafka = ["dep:rdkafka"]
 
 [package.metadata.docs.rs]
 # Python docs depend on the local pyo3-stub-gen patch for now, which published crates do not carry
-features = ["postgres", "redis"]
+features = ["postgres", "redis", "kafka"]
 rustdoc-args = ["--cfg", "docsrs"]
 
 [dependencies]
@@ -72,6 +73,7 @@ ustr = { workspace = true }
 pyo3 = { workspace = true, optional = true }
 pyo3-async-runtimes = { workspace = true, optional = true }
 pyo3-stub-gen = { workspace = true, optional = true }
+rdkafka = { workspace = true, optional = true }
 redis = { workspace = true, optional = true }
 sqlx = { workspace = true, optional = true }
 

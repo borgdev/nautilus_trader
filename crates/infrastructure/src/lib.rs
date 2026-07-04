@@ -20,6 +20,7 @@
 //! enterprise-grade data persistence and messaging capabilities:
 //!
 //! - **Redis integration**: Cache database and message bus implementations using Redis.
+//! - **Kafka integration**: Message bus egress/ingress backing for external streaming.
 //! - **PostgreSQL integration**: SQL-based cache database with full data models.
 //! - **Connection management**: Connection handling with retry logic and health monitoring.
 //! - **Serialization options**: Support for JSON and MessagePack encoding formats.
@@ -45,6 +46,7 @@
 //!
 //! - `python`: Enables Python bindings from [PyO3](https://pyo3.rs).
 //! - `redis`: Enables the Redis cache database and message bus backing implementations.
+//! - `kafka`: Enables the Kafka message bus backing implementation.
 //! - `postgres`: Enables the PostgreSQL SQLx models and cache database backend.
 //! - `extension-module`: Builds the crate as a Python extension module.
 
@@ -64,6 +66,9 @@
 
 #[cfg(feature = "python")]
 pub mod python;
+
+#[cfg(feature = "kafka")]
+pub mod kafka;
 
 #[cfg(feature = "redis")]
 pub mod redis;
