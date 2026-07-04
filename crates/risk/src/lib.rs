@@ -54,6 +54,7 @@
 #![deny(rustdoc::broken_intra_doc_links)]
 
 pub mod engine;
+pub mod overlay;
 pub mod sizing;
 
 #[cfg(feature = "python")]
@@ -61,3 +62,4 @@ pub mod python;
 
 // Re-exports
 pub use engine::RiskEngine;
+pub use overlay::RiskOverlayTable;

@@ -90,6 +90,7 @@ pub struct RiskEngine {
     pub throttled_modify_order: Throttler<ModifyOrder, ModifyOrderFn>,
     max_notional_per_order: AHashMap<InstrumentId, Decimal>,
     trading_state: TradingState,
+    risk_overlay: crate::overlay::RiskOverlayTable,
     config: RiskEngineConfig,
     command_count: u64,
     event_count: u64,
@@ -122,10 +123,21 @@ impl RiskEngine {
             throttled_modify_order,
             max_notional_per_order: config.max_notional_per_order.clone(),
             trading_state: TradingState::Active,
+            risk_overlay: crate::overlay::RiskOverlayTable::new(),
             config,
             command_count: 0,
             event_count: 0,
         }
+    }
+
+    /// Returns a handle to this engine's [`RiskOverlayTable`](crate::overlay::RiskOverlayTable).
+    ///
+    /// The returned handle is a cheap clone sharing the same underlying table (see that type's
+    /// doc comment) — intended for a control-command ingress task running on a different thread
+    /// to veto/clear strategy overrides concurrently with this engine's own order checks.
+    #[must_use]
+    pub fn risk_overlay(&self) -> crate::overlay::RiskOverlayTable {
+        self.risk_overlay.clone()
     }
 
     /// Registers all message bus handlers for the risk engine.
@@ -903,6 +915,18 @@ impl RiskEngine {
     }
 
     fn check_order(&self, instrument: &InstrumentAny, order: &OrderAny) -> bool {
+        let strategy_id = order.strategy_id();
+        if self
+            .risk_overlay
+            .is_vetoed(&strategy_id, self.clock.borrow().timestamp_ns())
+        {
+            self.deny_order(
+                order,
+                &OrderDeniedReason::GlobalRiskOverlayVeto { strategy_id }.to_string(),
+            );
+            return false; // Denied
+        }
+
         if !self.check_order_price(instrument, order)
             || !self.check_order_quantity(instrument, order)
         {

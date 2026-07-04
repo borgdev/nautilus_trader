@@ -28,7 +28,7 @@ use thiserror::Error;
 
 use crate::{
     enums::{OrderSide, OrderType, TimeInForce, TrailingOffsetType},
-    identifiers::{ClientId, InstrumentId, OrderListId, PositionId, Venue},
+    identifiers::{ClientId, InstrumentId, OrderListId, PositionId, StrategyId, Venue},
     types::{Money, Quantity},
 };
 
@@ -210,6 +210,12 @@ pub enum OrderDeniedReason {
         /// The instrument the order applies to.
         instrument_id: InstrumentId,
     },
+    /// An external control command has vetoed new order submissions for this strategy.
+    #[error("GLOBAL_RISK_OVERLAY_VETO: strategy_id={strategy_id}")]
+    GlobalRiskOverlayVeto {
+        /// The strategy the veto applies to.
+        strategy_id: StrategyId,
+    },
     /// The order submission rate limit was exceeded.
     #[error("RATE_LIMIT_EXCEEDED")]
     RateLimitExceeded,
@@ -346,6 +352,9 @@ impl OrderDeniedCode {
             }
             Self::TradingHalted => "Trading is halted; new orders are denied.",
             Self::TradingStateReducing => "Trading is reducing; the order would increase exposure.",
+            Self::GlobalRiskOverlayVeto => {
+                "An external control command has vetoed new order submissions for this strategy."
+            }
             Self::RateLimitExceeded => "The order submission rate limit was exceeded.",
             Self::NoExecutionClient => "No execution client was found for the routed command.",
             Self::ClientVenueMismatch => "The execution client does not handle the order venue.",

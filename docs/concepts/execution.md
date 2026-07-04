@@ -93,6 +93,7 @@ venue's own text unchanged.
 | `CUM_MARGIN_EXCEEDS_FREE_BALANCE`     | The cumulative initial margin exceeds the account free balance.                   |
 | `CUM_NOTIONAL_EXCEEDS_FREE_BALANCE`   | The cumulative order notional exceeds the account free balance.                   |
 | `EXPIRE_TIME_IN_PAST`                 | The order's expire time is in the past.                                           |
+| `GLOBAL_RISK_OVERLAY_VETO`            | An external control command has vetoed new order submissions for this strategy.   |
 | `INSTRUMENT_NOT_FOUND`                | The instrument was not found in the cache.                                        |
 | `INVALID_CLIENT_ORDER_ID`             | The client order ID is invalid for the venue.                                     |
 | `INVALID_MAX_NOTIONAL_PER_ORDER`      | The configured maximum notional per order is invalid.                             |
