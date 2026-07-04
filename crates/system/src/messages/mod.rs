@@ -13,8 +13,12 @@
 //  limitations under the License.
 // -------------------------------------------------------------------------------------------------
 
+pub mod control_command;
 pub mod controller;
 
+pub use control_command::{
+    ControlAction, ControlCommand, ControlCommandSeverity, ControlCommandType,
+};
 pub use controller::{
     ControllerCommand, CreateActor, CreateStrategy, RemoveActor, RemoveStrategy, StartActor,
     StartStrategy, StopActor, StopStrategy,
