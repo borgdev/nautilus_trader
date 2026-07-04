@@ -109,7 +109,15 @@ pub struct BusCaptureAdapter {
 /// without duplicating the [`EncoderRegistry`]'s per-type extraction logic.
 pub trait CapturedEntrySink: Send + Sync {
     /// Called with the just-submitted entry, after the writer has durably accepted it.
-    fn on_captured(&self, entry: &EntryDraft);
+    ///
+    /// `identity` is the same value the registry's identity extractor computed for dedup
+    /// purposes (e.g. `OrderFilled::event_id`) when one is registered for the captured type —
+    /// `None` for types with no registered identity extractor. This is the correlation key a
+    /// sink should carry alongside `entry`'s headers: it is the same id domain event payloads
+    /// already serialize (an order event's own `event_id`), so a downstream consumer can join
+    /// this notification back to the event it already decoded from the main event stream without
+    /// inventing a second identity scheme.
+    fn on_captured(&self, identity: Option<UUID4>, entry: &EntryDraft);
 }
 
 // Insertion-ordered set of recently captured message identities with FIFO eviction.
@@ -260,7 +268,8 @@ impl BusCaptureAdapter {
             return Err(CaptureError::Halted);
         }
 
-        if let Some(identity) = self.registry.identity_for_any(message)
+        let identity = self.registry.identity_for_any(message);
+        if let Some(identity) = identity
             && !self.note_fresh_identity(identity)
         {
             return Ok(false);
@@ -288,7 +297,7 @@ impl BusCaptureAdapter {
                     submit_counter.fetch_add(1, Ordering::AcqRel);
                 }
                 if let (Some(sink), Some(entry)) = (self.sink.as_ref(), notify) {
-                    sink.on_captured(&entry);
+                    sink.on_captured(identity, &entry);
                 }
                 Ok(true)
             }
@@ -371,9 +380,11 @@ mod tests {
     }
 
     #[derive(Debug)]
+    #[allow(clippy::struct_field_names, reason = "test stub mirrors real event field names")]
     struct StubEvent {
         client_order_id: String,
         venue_order_id: String,
+        event_id: UUID4,
     }
 
     #[derive(Debug)]
@@ -422,6 +433,7 @@ mod tests {
                 ],
             ))
         });
+        registry.register_identity::<StubEvent, _>(|e| Some(e.event_id));
         registry.register::<FailingMessage, _>(Ustr::from("FailingMessage"), |_| {
             Err(EncodeError::Serialize(
                 "encoder rejected message".to_string(),
@@ -572,12 +584,15 @@ mod tests {
 
     #[derive(Debug, Default)]
     struct RecordingSink {
-        entries: Mutex<Vec<EntryDraft>>,
+        entries: Mutex<Vec<(Option<UUID4>, EntryDraft)>>,
     }
 
     impl CapturedEntrySink for RecordingSink {
-        fn on_captured(&self, entry: &EntryDraft) {
-            self.entries.lock().expect("sink").push(entry.clone());
+        fn on_captured(&self, identity: Option<UUID4>, entry: &EntryDraft) {
+            self.entries
+                .lock()
+                .expect("sink")
+                .push((identity, entry.clone()));
         }
     }
 
@@ -602,9 +617,47 @@ mod tests {
 
         let entries = sink.entries.lock().expect("sink");
         assert_eq!(entries.len(), 1);
-        assert_eq!(entries[0].topic.as_ref(), "exec.command.SubmitOrder");
-        assert_eq!(entries[0].payload_type.as_str(), "StubCommand");
-        assert_eq!(entries[0].payload.as_ref(), b"O-1");
+        let (identity, entry) = &entries[0];
+        assert_eq!(entry.topic.as_ref(), "exec.command.SubmitOrder");
+        assert_eq!(entry.payload_type.as_str(), "StubCommand");
+        assert_eq!(entry.payload.as_ref(), b"O-1");
+        // StubCommand has no registered identity extractor.
+        assert!(identity.is_none());
+    }
+
+    #[rstest]
+    fn with_sink_carries_the_registered_identity_extractor_value(
+        captured_halt: (HaltCallback, Arc<Mutex<Vec<HaltReason>>>),
+    ) {
+        let (halt, _captured) = captured_halt;
+        let (writer, _backend) = writer_with_open_run("run-sink-identity", Arc::clone(&halt));
+        let sink = Arc::new(RecordingSink::default());
+        let adapter = BusCaptureAdapter::new(Arc::clone(&writer), stub_registry(), halt)
+            .with_sink(Arc::clone(&sink) as Arc<dyn CapturedEntrySink>);
+
+        let event_id = UUID4::new();
+        let event = StubEvent {
+            client_order_id: "O-1".to_string(),
+            venue_order_id: "V-1".to_string(),
+            event_id,
+        };
+        adapter
+            .capture::<StubEvent>(
+                Topic::from("exec.event.OrderFilled"),
+                &event,
+                Headers::empty(),
+                UnixNanos::from(100),
+            )
+            .expect("capture");
+        drain(&writer, 1);
+
+        let entries = sink.entries.lock().expect("sink");
+        assert_eq!(entries.len(), 1);
+        // The sink's identity is exactly the registry's identity extractor value for this type
+        // (mirrors how OrderFilled/OrderEventAny/AccountState register event_id in
+        // capture/builtins.rs) -- this is the correlation key a downstream consumer joins
+        // against the same event decoded from the main event stream.
+        assert_eq!(entries[0].0, Some(event_id));
     }
 
     #[rstest]
@@ -696,6 +749,7 @@ mod tests {
                 &StubEvent {
                     client_order_id: "O-counter-1".to_string(),
                     venue_order_id: "V-counter-1".to_string(),
+                    event_id: UUID4::new(),
                 },
                 Headers::empty(),
                 UnixNanos::from(102),
@@ -716,6 +770,7 @@ mod tests {
         let event = StubEvent {
             client_order_id: "O-2".to_string(),
             venue_order_id: "V-9".to_string(),
+            event_id: UUID4::new(),
         };
         adapter
             .capture::<StubEvent>(
